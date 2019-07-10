@@ -7,17 +7,20 @@ import math
 from stp_ocl_implementation import *
 import os, inspect
 from nengo_extras.vision import Gabor, Mask
-#import random
 from random import randint
 
+#CODE TO RUN SIMULATIONS WITH EXAMPLE MODEL
 
-#set this if you are using nengo OCL, otherwise comment out
+
+#set this if you are using nengo OCL
 platform = cl.get_platforms()[0]   #select platform, should be 0
 device=platform.get_devices()[2]   #select GPU, use 0 (Nvidia 1) or 1 (Nvidia 3)
 context=cl.Context([device])
-    
-#loads images in imagearr (images created using the psychopy package)
+
+#SETS AMOUNT OF NEURONS IN SENSORY AND MEMORY LAYER    
 N=2000
+
+#LOADS STIMULI (images created using the psychopy package)
 diameter=col=row=128  #width and height of images
 angles=np.arange(-90,90,1)  #angle of the grating, 999 is the bullseye 'ping'
 #angles=np.append(angles, 999)
@@ -42,8 +45,8 @@ imagearr=2 * imagearr - 1
 stim = 0
 probe = 0 
 cued = True
-#input functions
-full_sim=False
+
+#INPUT FUNCTIONS
 def input_func(t):
     t=t-.05
     if t > 0 and t < .25:
@@ -92,14 +95,20 @@ Sin=np.sin(Frad)
 Cos=np.cos(Frad)
 answers=np.vstack((Sin,Cos))
 modelseed=0
-runs=2881
 initialangle_c=np.zeros(runs*14)
 initialangle_uc=np.zeros(runs*14)
 angle_index=0
-for run in range(2304, 2880):
+
+
+#SIMULATION CONTROL
+full_sim=False
+runs=96
+
+#SIMULATION
+for run in range(0, runs):
     print(run)
     
-    #create new gabor filters every 5 runs
+    #create new gabor filters every 96 runs
     if (run%96==0):
         #seed=run #random.randint(0,1000)
         #generate gabor filters    
@@ -118,22 +127,22 @@ for run in range(2304, 2880):
         e = np.dot(gabors, U[:,:bases]) 
         compressed_im=np.dot(imagearr[:1800,:]/100, U[:,:bases])
     
-    #STSP network
+    #STSP MODEL
     with nengo.Network(seed=modelseed) as model:
    
             
         inputNode=nengo.Node(input_func3)     
         reactivate=nengo.Node(reactivate_func)  
         
-        #vision (sensory) and memory
-        vision = nengo.Ensemble(N, bases, encoders=e, intercepts=Uniform(0.01, .1),radius=1)
+        #sensory and memory
+        sensory = nengo.Ensemble(N, bases, encoders=e, intercepts=Uniform(0.01, .1),radius=1)
         memory = nengo.Ensemble(N, bases,neuron_type=stpLIF(), intercepts=Uniform(0.01, .1),radius=1)
      
         #input connection
-        nengo.Connection(inputNode,vision,transform=U[:,:bases].T)
+        nengo.Connection(inputNode,sensory,transform=U[:,:bases].T)
         nengo.Connection(reactivate,memory.neurons)
         #learning connections
-        nengo.Connection(vision, memory, transform=.1)
+        nengo.Connection(sensory, memory, transform=.1)
         nengo.Connection(memory, memory,transform=1,learning_rule_type=STP(),solver=nengo.solvers.LstsqL2(weights=True))
         
         samples=10000
@@ -146,8 +155,8 @@ for run in range(2304, 2880):
         sinBcosB=sinBcosB*scale
         ep=np.hstack((sinAcosA,sinBcosB.T))
 
-        #need both sin, cosine of vision and memory
-        allens = nengo.Ensemble(n_neurons=2000, dimensions=4,radius=math.sqrt(2),intercepts=Uniform(.01, 1))
+        #need both sin, cosine of sensory and memory
+        decision = nengo.Ensemble(n_neurons=2000, dimensions=4,radius=math.sqrt(2),intercepts=Uniform(.01, 1))
       
         #theta
         def decision_func(v):
@@ -168,22 +177,20 @@ for run in range(2304, 2880):
             return pos_ans[i]*90/math.pi
         
            
-        #connect sin and cosine to allens
-        nengo.Connection(memory, allens[2:],eval_points=compressed_im,function=answers.T)
-        nengo.Connection(vision, allens[:2],eval_points=compressed_im,function=answers.T)
+        #connect sin and cosine to decision
+        nengo.Connection(memory, decision[2:],eval_points=compressed_im,function=answers.T)
+        nengo.Connection(sensory, decision[:2],eval_points=compressed_im,function=answers.T)
     
         #difference in orientation
-        dtheta = nengo.Ensemble(n_neurons=2000,  dimensions=1,radius=45)#,intercepts=Uniform(0.01,.1))
-         nengo.Connection(allens, dtheta, eval_points=ep, scale_eval_points=False, function=arctan_func)
+        output_ens = nengo.Ensemble(n_neurons=2000,  dimensions=1,radius=45)#,intercepts=Uniform(0.01,.1))
+         nengo.Connection(decision, output_ens, eval_points=ep, scale_eval_points=False, function=arctan_func)
 
         #probe dtheta
-        p_dtheta=nengo.Probe(dtheta, synapse=0.01)
+        p_dtheta=nengo.Probe(output_ens, synapse=0.01)
         p_mem=nengo.Probe(memory, synapse=0.01)
-        p_sen=nengo.Probe(vision, synapse=0.01)
-       # p_allens=nengo.Probe(allens, synapse=0.01)
-        
-      #  p_theta=nengo.Probe(theta,synapse=0.01)
-      #  p_dtheta2=nengo.Probe(dtheta2,synapse=0.01)
+        p_sen=nengo.Probe(sensory, synapse=0.01)
+        #p_decision=nengo.Probe(decision, synapse=0.01)
+
        
 
        # run in python + save
@@ -198,8 +205,8 @@ for run in range(2304, 2880):
     
         sim = StpOCLsimulator(network=model, seed=run, context=context,progress_bar=False) #set progress bar to false so nohup doesnt create a gigantic output file
         probelist=[-42, -33, -25, -18, -12, -7, -3, 3, 7, 12, 18, 25, 33, 42]
-        #probelist=[42]
         
+        #normalise stimuli to be between 0 and 180 degrees orientation
         def norm_p(p):
             if p<0:
                 return 180+p
@@ -208,6 +215,7 @@ for run in range(2304, 2880):
             else:
                 return p
      
+        #Calulcate normalised cosine sim and avoid divide by 0 errors
         def cosine_sim(a,b):
             out=np.zeros(a.shape[0])
             for i in range(0,  a.shape[0]):
@@ -219,7 +227,7 @@ for run in range(2304, 2880):
         
          #---------
          #cued module  
-            #reset simulator, clean probes thoroughly
+            
   
             #set probe and stim
             stim=randint(0, 179)
@@ -235,6 +243,8 @@ for run in range(2304, 2880):
           
             sim.run(3)
             np.savetxt(cur_path+"81_Diff_Theta_%i_run_%i.csv" % (anglediff,(run)), sim.data[p_dtheta][2500:2999,:], delimiter=",")
+            
+            #reset simulator, clean probes thoroughly
             sim.reset()
             for probe2 in sim.model.probes:
                 del sim._probe_outputs[probe2][:]
@@ -280,7 +290,9 @@ for run in range(2304, 2880):
                 
                 cs=cosine_sim(sim.data[p_sen],np.dot(imagearr[1800,:]/100, U[:,:bases]))
                 np.savetxt(cur_path+"79_cs_sen_uncued_stim_999_run_%i.csv" % (run), cs, delimiter=",")
-                 
+                
+                
+                #reset simulator, clean probes thoroughly 
                 sim.reset()
                 for probe2 in sim.model.probes:
                     del sim._probe_outputs[probe2][:]
@@ -291,8 +303,7 @@ for run in range(2304, 2880):
             angle_index=angle_index+1
             
 np.savetxt(cur_path+"80_initial_angles_cued_%i_runs.csv" % (run), initialangle_c,delimiter=",")
-#np.savetxt(cur_path+"76_initial_angles_uncued_%i_runs.csv" % (run), initialangle_uc,delimiter=",")
-        
+ 
 
           
     
