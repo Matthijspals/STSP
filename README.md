@@ -22,7 +22,7 @@ The following additional probes can be used:
 ```nengo.Probe(ensemble.neurons, 'calcium')```
 ```nengo.Probe(ensemble.neurons, 'resources')  ```      
 
-## Theoretical Background
+## Theoretical background
 Synaptic efficiency is based on two parameters: the amount of available resources to the presynaptic neuron (x, normalised to be between 0 and 1) and the fraction of resources used each time a neuron fires (u), reflecting the residual presynaptic calcium level.
 
 For all LIF neurons to which we want to apply STSP, every simulation time step u and x are calculated according to equation 2.1 and 2.2, respectively. When a neuron fires, its resources x are decreased by u x, mimicking neurotransmitter depletion. At the same time, its calcium level u is increased, mimicking calcium influx into the presynaptic terminal. Both u and x relax back to baseline with time constants 𝜏_𝐷 (0.2s) and 𝜏_𝐹 (1.5s), respectively. The mechanisms are described by:
