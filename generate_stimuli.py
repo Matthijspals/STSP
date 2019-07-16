@@ -6,7 +6,6 @@ import psychopy.event
 import numpy as np
 #Create png images using Psychopy
 
-#4.385 cycles
 
 pixels=128 #width and height of images
 
@@ -31,8 +30,9 @@ grating.sf = spatialfr
 
 grating.mask = "circle"
 
-grating.contrast = 0.5
-#generate stimuli
+grating.contrast = 1
+
+#generate grating stimuli
 for angle in angles:
     for phase in phases:
         name="stim"+str(angle)+"_"+str(round(phase,1))+".png"
@@ -54,7 +54,7 @@ grating.draw()
 win.flip()
 win.getMovieFrame()
 win.saveMovieFrames(name)
-#angles.append(999)
+
 
 
     
