@@ -25,11 +25,11 @@ The following additional probes can be used:
 ## Theoretical Background
 Synaptic efficiency is based on two parameters: the amount of available resources to the presynaptic neuron (x, normalised to be between 0 and 1) and the fraction of resources used each time a neuron fires (u), reflecting the residual presynaptic calcium level.
 
-For all LIF neurons to which we want to apply STSP, every simulation time step u and x are calculated according to equation 2.1 and 2.2, respectively. When a neuron fires, its resources x are decreased by ux, mimicking neurotransmitter depletion. At the same time, its calcium level u is increased, mimicking calcium influx into the presynaptic terminal. Both u and x relax back to baseline with time constants 𝜏_𝐷 (0.2s) and 𝜏_𝐹 (1.5s), respectively. The mechanisms are described by:
+For all LIF neurons to which we want to apply STSP, every simulation time step u and x are calculated according to equation 2.1 and 2.2, respectively. When a neuron fires, its resources x are decreased by u x, mimicking neurotransmitter depletion. At the same time, its calcium level u is increased, mimicking calcium influx into the presynaptic terminal. Both u and x relax back to baseline with time constants 𝜏_𝐷 (0.2s) and 𝜏_𝐹 (1.5s), respectively. The mechanisms are described by:
 
 𝑑𝑥/𝑑𝑡= (1−𝑥)/𝜏_𝐷 − 𝑢 𝑥 𝛿(𝑡−𝑡_𝑠𝑝) (2.1)
 
-𝑑𝑢/𝑑𝑡= (𝑈−𝑢)𝜏_𝐹 − 𝑈 (1−𝑢) 𝛿(𝑡−𝑡_𝑠𝑝) (2.2) 
+𝑑𝑢/𝑑𝑡= (𝑈−𝑢)/𝜏_𝐹 − 𝑈 (1−𝑢) 𝛿(𝑡−𝑡_𝑠𝑝) (2.2) 
 
 Where x represents the available resources, u represents the residual calcium level and U its baseline level, 𝜏_𝐹 is the facilitating time constant and 𝜏_𝐷 the depressing time constant, 𝛿 represents the Dirac delta function, t the simulation time and t_sp the time of a presynaptic spike. 
 
