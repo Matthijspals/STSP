@@ -12,14 +12,17 @@ from random import randint
 #CODE TO RUN SIMULATIONS WITH EXAMPLE MODEL
 
 #SIMULATION CONTROL
-full_sim=True #set if you want to run both the  cued and uncued model
-runs=2         #amount of runs (note that each run contains 14 trials, one trial for each possible orientation difference between the memory item and the probe)
-N=1500         #amount of neurons in memory and sensory layer
-
+full_sim=False #set if you want to run both the  cued and uncued model
+runs=2880        #amount of runs (note that each run contains 14 trials, one trial for each possible orientation difference between the memory item and the probe)
+Ns=1000        #amount of neurons in memory and sensory layer
+Nm=1500
+Nc=1500
+Nd=1000
+sim_no="95"      #simulation number (used in the names of the outputfiles)
 
 #set this if you are using nengo OCL
 platform = cl.get_platforms()[0]   #select platform, should be 0
-device=platform.get_devices()[2]   #select GPU, use 0 (Nvidia 1) or 1 (Nvidia 3)
+device=platform.get_devices()[0]   #select GPU, use 0 (Nvidia 1) or 1 (Nvidia 3)
 context=cl.Context([device])
 
 
@@ -64,23 +67,28 @@ initialangle_uc=np.zeros(runs*14)
 angle_index=0
 
 #input stimuli
-def input_func3(t):
-    t=t-.05
-    if t > 0 and t < .25:
-        return imagearr[stim,:]/100             #memory item
+
+#t 250 ms memory items, 800 ms fixation, 20 ms reacitvation, 1080 ms fixation, 100 ms impulse, 400 ms fixation, and 250 ms probe.
+
+
+def input_func_L(t):
+    #t=t-.05
+    if t > 0 and t < 0.25:
+        return imagearr[memory_item_L,:]/100
     elif t > 2.15 and t < 2.25:
-        return imagearr[1800,:]/50              #'impulse' at twice the contrast
+        return imagearr[1800,:]/50
     elif t > 2.65 and t < 2.90:
-        return imagearr[probe,:]/100            #probe
+        return imagearr[probe,:]/100
     else:
         return np.zeros(128*128) 
 
+    
 #reactivate memory ensemble with nonspecific signal        
 def reactivate_func(t):
-    if t>1.400 and t<1.42 and cued==True:
-        return np.ones(N)*0.0200
+    if t>1.050 and t<1.070:
+        return np.ones(Nm)*0.0200
     else:
-        return np.zeros(N)
+        return np.zeros(Nm)
 
 
 #Create matrix of sine and cosine values associated with the stimuli
@@ -96,54 +104,76 @@ answers=np.vstack((Sin,Cos))
 
 
 #SIMULATION
-for run in range(0, runs):
+for run in range(2496, runs):
     print(run)
     
     #create new gabor filters every 96 runs to simulate a new participant
     if (run%96==0):
-        #generate gabor filters    
-        gabors = Gabor().generate(N, (col/3, row/3))#.reshape(N, -1)
-        gabors = Mask((col, row)).populate(gabors, flatten=True).reshape(N, -1)
-        gabors=gabors/abs(max(np.amax(gabors),abs(np.amin(gabors))))
+        gabors_L = Gabor().generate(Ns, (col/3, row/3))#.reshape(N, -1)
+        gabors_L = Mask((col, row)).populate(gabors_L, flatten=True).reshape(Ns, -1)
+        gabors_L=gabors_L/abs(max(np.amax(gabors_L),abs(np.amin(gabors_L))))
+ 
+        #gabors_R = Gabor().generate(Ns, (col/3, row/3))#.reshape(N, -1)
+        #gabors_R = Mask((col, row)).populate(gabors_R, flatten=True).reshape(Ns, -1)
+        #gabors_R=gabors_R/abs(max(np.amax(gabors_R),abs(np.amin(gabors_R))))
         #array to use for SVD
-        x=np.vstack((imagearr,gabors))    
-        modelseed=modelseed+1    
+        x_L=np.vstack((imagearr,gabors_L))    
+        #x_R=np.vstack((imagearr,gabors_R))    
+      
+
         #Do SVD    
-        U, S, V = np.linalg.svd(x.T)
+        U_L, S_L, V_L = np.linalg.svd(x_L.T)
+        #U_R, S_R, V_R = np.linalg.svd(x_R.T)
         print("SVD done")
         bases = 24
 
         #Use result of SVD to create encoders
-        e = np.dot(gabors, U[:,:bases]) 
-        compressed_im=np.dot(imagearr[:1800,:]/100, U[:,:bases])
+        bases = 24
+        #Use result of SVD to create encoders
+        e_L = np.dot(gabors_L, U_L[:,:bases]) 
+        compressed_im_L=np.dot(imagearr[:1800,:]/100, U_L[:,:bases])
+        #e_R = np.dot(gabors_R, U_R[:,:bases]) 
+        #compressed_im_R=np.dot(imagearr[:1800,:]/100, U_R[:,:bases])
     
     #STSP MODEL
     with nengo.Network(seed=modelseed) as model:
    
         #input nodes   
-        inputNode=nengo.Node(input_func3)     
-        reactivate=nengo.Node(reactivate_func)  
+        inputNode_L=nengo.Node(input_func_L)     
+        #inputNode_R=nengo.Node(input_func_R)
+        
+        reactivate=nengo.Node(reactivate_func)
         
         #sensory and memory ensemble
-        sensory = nengo.Ensemble(N, bases, encoders=e, intercepts=Uniform(0.01, .1),radius=1)
-        memory = nengo.Ensemble(N, bases,neuron_type=stpLIF(), intercepts=Uniform(0.01, .1),radius=1)
+        sensory_L = nengo.Ensemble(Ns, bases, encoders=e_L, intercepts=Uniform(0.01, .1),radius=1)
+        memory_L = nengo.Ensemble(Nm, bases,neuron_type=stpLIF(), intercepts=Uniform(0.01, .1),radius=1)
+        
+        #sensory_R = nengo.Ensemble(Ns, bases, encoders=e_R, intercepts=Uniform(0.01, .1),radius=1)
+        #memory_R = nengo.Ensemble(Nm, bases,neuron_type=stpLIF(), intercepts=Uniform(0.01, .1),radius=1)
      
         #input connection
-        nengo.Connection(inputNode,sensory,transform=U[:,:bases].T)
-        nengo.Connection(reactivate,memory.neurons)
+        nengo.Connection(inputNode_L,sensory_L,transform=U_L[:,:bases].T)
+        #nengo.Connection(inputNode_R,sensory_R,transform=U_R[:,:bases].T)
+        
+        nengo.Connection(reactivate,memory_L.neurons)
         
         #connect sensory to memory
-        nengo.Connection(sensory, memory, transform=.1)
+        nengo.Connection(sensory_L, memory_L, transform=.1)
+        #nengo.Connection(sensory_R, memory_R, transform=.1)
        
         #learning connection (memory to memory)
-        nengo.Connection(memory, memory,transform=1,learning_rule_type=STP(),solver=nengo.solvers.LstsqL2(weights=True))
+        nengo.Connection(memory_L, memory_L,transform=1,learning_rule_type=STP(),solver=nengo.solvers.LstsqL2(weights=True))
+        #nengo.Connection(memory_R, memory_R,transform=1,learning_rule_type=STP(),solver=nengo.solvers.LstsqL2(weights=True))
         
-        #decision represents sin, cosine of theta of both sensory and memory ensemble
-        decision = nengo.Ensemble(n_neurons=2000, dimensions=4,radius=math.sqrt(2),intercepts=Uniform(.01, 1))
+        #comparison represents sin, cosine of theta of both sensory and memory ensemble
+        comparison_L = nengo.Ensemble(Nc, dimensions=4,radius=math.sqrt(2),intercepts=Uniform(.01, 1))
+        #comparison_R = nengo.Ensemble(Nd, dimensions=4,radius=math.sqrt(2),intercepts=Uniform(.01, 1))
         
-        #connect memory and sensory to decision
-        nengo.Connection(memory, decision[2:],eval_points=compressed_im,function=answers.T)
-        nengo.Connection(sensory, decision[:2],eval_points=compressed_im,function=answers.T)
+        #connect memory and sensory to comparison
+        nengo.Connection(memory_L, comparison_L[2:],eval_points=compressed_im_L,function=answers.T)
+        nengo.Connection(sensory_L, comparison_L[:2],eval_points=compressed_im_L,function=answers.T)
+        #nengo.Connection(memory_R, comparison_R[2:],eval_points=compressed_im_R,function=answers.T)
+        #nengo.Connection(sensory_R, comparison_R[:2],eval_points=compressed_im_R,function=answers.T)
     
         #create eval points so that we can go from sine and cosine of theta in sensory and memory layer
         #to the difference in theta between the two
@@ -167,16 +197,14 @@ for run in range(0, runs):
         
            
         #output_ens represents the difference in theta decoded from the sensory and memory ensembles
-        output_ens = nengo.Ensemble(n_neurons=2000,  dimensions=1,radius=45)
+        decision = nengo.Ensemble(n_neurons=Nd,  dimensions=1,radius=45)
         #connect decision to output_ens
-        nengo.Connection(decision, output_ens, eval_points=ep, scale_eval_points=False, function=arctan_func)
-
-        #probes
-        p_dtheta=nengo.Probe(output_ens, synapse=0.01)
-        p_mem=nengo.Probe(memory, synapse=0.01)
-        p_sen=nengo.Probe(sensory, synapse=0.01)
+        nengo.Connection(comparison_L, decision, eval_points=ep, scale_eval_points=False, function=arctan_func)
+        #nengo.Connection(comparison_R, decision, eval_points=ep, scale_eval_points=False, function=arctan_func)
          
-
+        p_dec=nengo.Probe(decision, synapse=0.01)
+        
+        
         nengo_gui_on = __name__ == 'builtins' #python3
     # run in python + save
     if not(nengo_gui_on):
@@ -210,26 +238,30 @@ for run in range(0, runs):
         for anglediff in probelist:
         
          #---------
-         #cued module  
+ 
             
   
             #set probe and stim
-            stim=randint(0, 179)
-            probe=stim+anglediff
+            memory_item_L=randint(0, 179)
+           # memory_item_R=randint(0, 179)
+            probe=memory_item_L+anglediff
             probe=norm_p(probe)
             #random phase
-            or_stim=stim
-            stim=stim+(180*randint(0, 9))
+            or_memory_item_L=memory_item_L
+           # or_memory_item_R=memory_item_R
+            memory_item_L=memory_item_L+(180*randint(0, 9))
+           # memory_item_R=memory_item_R+(180*randint(0, 9))
             probe=probe+(180*randint(0, 9))
             
-            #run sim cued
-            cued=True
+          
             #store orientation
-            initialangle_c[angle_index]=stim
+            initialangle_c[angle_index]=or_memory_item_L
+           # initialangle_uc[angle_index]=or_memory_item_R
+            
             #run simulation
             sim.run(3)
             #store output
-            np.savetxt(cur_path+"82_Diff_Theta_%i_run_%i.csv" % (anglediff,(run)), sim.data[p_dtheta][2500:2999,:], delimiter=",")
+            np.savetxt(cur_path+sim_no+"_Diff_Theta_%i_run_%i.csv" % (anglediff,(run)), sim.data[p_dec][2500:2999,:], delimiter=",")
             
             #reset simulator, clean probes thoroughly
             sim.reset()
@@ -238,61 +270,12 @@ for run in range(0, runs):
             del sim.data
             sim.data = nengo.simulator.ProbeDict(sim._probe_outputs) 
             
-            #store cosine simularity on trial with a orientation difference of 42 degrees between memory item and probe
-            if (anglediff==42 and full_sim==True):
-                diffs=[0,3,7,12,18,25,33,42]
-                for dif in diffs:
-                   stim_temp=norm_p(or_stim+dif)+(180*randint(0, 9))
-                   cs=cosine_sim(sim.data[p_sen],np.dot(imagearr[stim_temp,:]/100, U[:,:bases]))
-                   np.savetxt(cur_path+"82_cs_sen_cued_stim_%i_run_%i.csv" % (dif,run), cs, delimiter=",")
-                
-                cs=cosine_sim(sim.data[p_sen],np.dot(imagearr[1800,:]/100, U[:,:bases]))
-                np.savetxt(cur_path+"82_cs_sen_cued_stim_999_run_%i.csv" % (run), cs, delimiter=",")
-                 
-         
-                #---------
-                #uncued module
-                sim.reset()
-                for probe2 in sim.model.probes:
-                    del sim._probe_outputs[probe2][:]
-                del sim.data
-                sim.data = nengo.simulator.ProbeDict(sim._probe_outputs) 
-                
-                stim=randint(0, 179)
-                probe=stim+anglediff
-                probe=norm_p(probe)
-                #random phase
-                or_stim=stim
-                stim=stim+(180*randint(0, 9))
-                probe=probe+(180*randint(0, 9))
-                #run sim unqued
-                cued=False
-                #initialangle_uc[angle_index]=stim
-                sim.run(3)
-                
-                #store cosine simularity
-                diffs=[0,3,7,12,18,25,33,42]
-                for dif in diffs:
-                   stim_temp=norm_p(or_stim+dif)+(180*randint(0, 9))
-                   cs=cosine_sim(sim.data[p_sen],np.dot(imagearr[stim_temp,:]/100, U[:,:bases]))
-                   np.savetxt(cur_path+"82_cs_sen_uncued_stim_%i_run_%i.csv" % (dif,run), cs, delimiter=",")
-                
-                cs=cosine_sim(sim.data[p_sen],np.dot(imagearr[1800,:]/100, U[:,:bases]))
-                np.savetxt(cur_path+"82_cs_sen_uncued_stim_999_run_%i.csv" % (run), cs, delimiter=",")
-                
-                
-                #reset simulator, clean probes thoroughly 
-                sim.reset()
-                for probe2 in sim.model.probes:
-                    del sim._probe_outputs[probe2][:]
-                del sim.data
-                sim.data = nengo.simulator.ProbeDict(sim._probe_outputs) 
-                
+
 
             angle_index=angle_index+1
             
-np.savetxt(cur_path+"82_initial_angles_cued_%i_runs.csv" % (run), initialangle_c,delimiter=",")
- 
+        np.savetxt(cur_path+sim_no+"_initial_angles_cued_%i_runs.csv" % (runs+2), initialangle_c,delimiter=",")
+       # np.savetxt(cur_path+sim_no+"_initial_angles_uncued_%i_runs.csv" % (runs), initialangle_uc,delimiter=",")
 
           
     
