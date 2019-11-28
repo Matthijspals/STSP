@@ -12,7 +12,7 @@ pixels=128 #width and height of images
 diameter=pixels 
 spatialfr=4.385/pixels
 angles=np.arange(-90,91,1)
-phases=np.arange(0,1,1)
+phases=np.arange(0,1,0.1)
 win = psychopy.visual.Window(
     size=[diameter, diameter],
     units="pix",
@@ -37,7 +37,7 @@ for angle in angles:
     for phase in phases:
         name="stim"+str(angle)+"_"+str(round(phase,1))+".png"
         grating.ori = angle
-        grating.phase = randint(0, 9)*0.1 #phase
+        grating.phase = phase #phase
         grating.draw()
         win.flip()
         win.getMovieFrame()
