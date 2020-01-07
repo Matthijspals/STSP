@@ -44,5 +44,6 @@ Where 𝑤_𝑖𝑗 represents the connection weight between neuron i and j and 
 
 ## Sources
 Mongillo G, Barak O, Tsodyks M. Synaptic Theory of Working Memory. Science. 2008;319: 1543–1546. doi:10.1126/science.1150769
+
 Wolff MJ, Jochim J, Akyürek EG, Stokes MG. Dynamic hidden states underlying working-memory-guided behavior. Nat Neuroscience. 2017;20: 864–871. doi:10.1038/nn.4546
 
