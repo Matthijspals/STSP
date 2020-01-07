@@ -13,7 +13,7 @@ And specify the following learning rule for outgoing connections:
 
 ```learning_rule_type=STP()```
 
-To use the OCL implementation use the following simulator:
+To use the OpenCL implementation use the following simulator:
 
 ```StpOCLsimulator()```
 
