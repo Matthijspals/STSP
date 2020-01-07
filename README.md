@@ -23,7 +23,7 @@ The following additional probes can be used:
 ```nengo.Probe(ensemble.neurons, 'resources')  ```   
 
 ## Example models/simulations
-The implementation of STSP was used to create a functional spiking neuron model of working memory: https://www.biorxiv.org/content/10.1101/823559v1. Using this mechanism, the model is able to maintain information in activity-silent states. This model was then used to simulate three working memory tasks (the Model_sim_exp.py files), earlier performed by human participants (Wolff et al. 2017). Both the model's behavior as well as its neural representations are in agreement with the human data. 
+The implementation of STSP was used to create a functional spiking neuron model of working memory: https://www.biorxiv.org/content/10.1101/823559v1. Using this mechanism, the model is able to maintain information in activity-silent states. This model was used to simulate three working memory tasks (the Model_sim_exp.py files), earlier performed by human participants (Wolff et al. 2017). Both the model's behavior as well as its neural representations are in agreement with the human data. 
 
 ## Theoretical background
 Synaptic efficiency is based on two parameters: the amount of available resources to the presynaptic neuron (x, normalised to be between 0 and 1) and the fraction of resources used each time a neuron fires (u), reflecting the residual presynaptic calcium level.
@@ -41,3 +41,8 @@ Outgoing connection weights of neurons implementing STSP are determined by both 
 𝑑𝑤_𝑖𝑗/𝑑𝑡= (c 𝑢)/𝐶 𝑤_0𝑖𝑗 (2.3)
 
 Where 𝑤_𝑖𝑗 represents the connection weight between neuron i and j and 𝑤_0𝑖𝑗 the initial connection weight between neuron i and j.
+
+## Sources
+Mongillo G, Barak O, Tsodyks M. Synaptic Theory of Working Memory. Science. 2008;319: 1543–1546. doi:10.1126/science.1150769
+Wolff MJ, Jochim J, Akyürek EG, Stokes MG. Dynamic hidden states underlying working-memory-guided behavior. Nat Neuroscience. 2017;20: 864–871. doi:10.1038/nn.4546
+
