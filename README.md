@@ -20,7 +20,10 @@ To use the OCL implementation use the following simulator:
 The following additional probes can be used:
 
 ```nengo.Probe(ensemble.neurons, 'calcium')```
-```nengo.Probe(ensemble.neurons, 'resources')  ```      
+```nengo.Probe(ensemble.neurons, 'resources')  ```   
+
+## Example models/simulations
+The implementation of STSP was used to create a functional spiking neuron model of working memory: https://www.biorxiv.org/content/10.1101/823559v1. Using this mechanism, the model is able to maintain information in activity-silent states. This model was then used to simulate three working memory tasks (the Model_sim_exp.py files), earlier performed by human participants (Wolff et al. 2017). Both the model's behavior as well as its neural representations are in agreement with the human data. 
 
 ## Theoretical background
 Synaptic efficiency is based on two parameters: the amount of available resources to the presynaptic neuron (x, normalised to be between 0 and 1) and the fraction of resources used each time a neuron fires (u), reflecting the residual presynaptic calcium level.
