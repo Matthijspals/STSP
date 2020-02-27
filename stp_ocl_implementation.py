@@ -9,7 +9,6 @@ import nengo
 
 from nengo.exceptions import SimulationError, ValidationError, BuildError
 import nengo.learning_rules
-from nengo.builder.operator import Reset #,DotInc, ElementwiseInc, Copy
 from nengo.builder import Operator, Builder, Signal
 from nengo.utils.neurons import settled_firingrate
 from nengo.neurons import AdaptiveLIFRate, LIF
@@ -27,7 +26,7 @@ from nengo.node import Node
 from nengo.builder.learning_rules import *
 from nengo.dists import Uniform
 from nengo.processes import Piecewise
-import nengo_spa as spa
+#import nengo_spa as spa
 
 from nengo_ocl import Simulator
 from nengo_ocl.utils import as_ascii #, indent, round_up
@@ -56,19 +55,23 @@ class stpLIF(LIF):
     
     tau_x = NumberParam('tau_x', low=0, low_open=True)
     tau_u = NumberParam('tau_u', low=0, low_open=True)
+    U = NumberParam('U', low=0, low_open=True)
 
-    def __init__(self, tau_x=0.2, tau_u=1.5, **lif_args):
+    def __init__(self, tau_x=0.2, tau_u=1.5, U=0.2, **lif_args):
         super(stpLIF, self).__init__(**lif_args)
         self.tau_x = tau_x
         self.tau_u = tau_u
+        self.U = U
 
     @property
     def _argreprs(self):
         args = super(LIFRate, self)._argreprs
         if self.tau_x != 0.2:
-            args.append("tau_n=%s" % self.tau_n)
+            args.append("tau_x=%s" % self.tau_x)
         if self.tau_u != 1.5:
-            args.append("tau_n=%s" % self.tau_n)
+            args.append("tau_u=%s" % self.tau_u)
+        if self.U!= 0.2:
+            args.append("U=%s" % self.U)
         return args
 
     def step_math(self, dt, J, output, voltage, ref, resources, calcium):
@@ -79,7 +82,7 @@ class stpLIF(LIF):
         
         #calculate u and x
         dx=dt * ( (1-x)/self.tau_x - u*x*output )
-        du=dt * ( (0.2-u)/self.tau_u + 0.2*(1-u)*output )
+        du=dt * ( (self.U-u)/self.tau_u + self.U*(1-u)*output )
         
         x += dx
         u += du
@@ -100,7 +103,7 @@ def build_stpLIF(model, stplif, neurons):
     model.sig[neurons]['resources'] = Signal(
         np.ones(neurons.size_in), name="%s.resources" % neurons)
     model.sig[neurons]['calcium'] = Signal(
-        np.full(neurons.size_in, 0.2), name="%s.calcium" % neurons)
+        np.full(neurons.size_in, stplif.U), name="%s.calcium" % neurons)
     model.add_op(SimNeurons(neurons=stplif,
                             J=model.sig[neurons]['in'],
                             output=model.sig[neurons]['out'],
@@ -115,15 +118,11 @@ def build_stpLIF(model, stplif, neurons):
 
 class STP(LearningRuleType):
     """STP learning rule.
-
     Modifies connection weights according to the calcium and resources of the presynapse
-
-
     Parameters
     ----------
     learning_rate : float, optional (Default: 1)
         A scalar indicating the rate at which weights will be adjusted (exponential).
-
     Attributes
     ----------
     learning_rate : float
@@ -147,15 +146,10 @@ class STP(LearningRuleType):
 #builders for STP
 class SimSTP(Operator):
     r"""Calculate connection weight change according to the STP rule.
-
     Implements the STP learning rule of the form:
-
     .. math:: omega_{ij} = .....
-
     where
-
     * :math:`\omega_{ij}` is the connection weight between the two neurons.
-
     Parameters
     ----------
     weights : Signal
@@ -166,7 +160,6 @@ class SimSTP(Operator):
         The scalar learning rate, :math:`\kappa`.
     tag : str, optional (Default: None)
         A label associated with the operator, for debugging purposes.
-
     Attributes
     ----------
     delta : Signal
@@ -177,7 +170,6 @@ class SimSTP(Operator):
         A label associated with the operator, for debugging purposes.
     weights : Signal
         The connection weight matrix, :math:`\omega_{ij}`.
-
     Notes
     -----
     1. sets ``[]``
@@ -225,18 +217,17 @@ class SimSTP(Operator):
         init_weights = self.weights.initial_value
         calcium = signals[self.calcium]
         resources = signals[self.resources]
+        U=self.calcium.initial_value
         def step_simstp():
             # perform update
-                delta[...] = ((calcium * resources)/0.2) * init_weights - weights
+                delta[...] = ((calcium * resources)/U) * init_weights - weights
             
         return step_simstp
     
 @Builder.register(STP)
 def build_stp(model, stp, rule):
     """Builds a `.STP` object into a model.
-
    
-
     Parameters
     ----------
     model : Model
@@ -245,7 +236,6 @@ def build_stp(model, stp, rule):
         Learning rule type to build.
     rule : LearningRule
         The learning rule object corresponding to the neuron type.
-
     Notes
     -----
     Does not modify ``model.params[]`` and can therefore be called
@@ -255,13 +245,13 @@ def build_stp(model, stp, rule):
     conn = rule.connection
     calcium = model.sig[get_pre_ens(conn).neurons]['calcium']
     resources = model.sig[get_pre_ens(conn).neurons]['resources']
-  
 
     model.add_op(SimSTP(calcium,
                         resources,
                         model.sig[conn]['weights'],
                         model.sig[rule]['delta'],
-                        learning_rate=stp.learning_rate))
+                        learning_rate=stp.learning_rate,
+                        ))
 
     # expose these for probes
     model.sig[rule]['calcium'] = calcium
@@ -272,14 +262,14 @@ def build_stp(model, stp, rule):
 #-------------------------------------------------------
 
 
-def plan_stp(queue, calcium, resources, weights, delta, alpha, init_weights, tag=None):
+def plan_stp(queue, calcium, resources, weights, delta, alpha, init_weights, init_calcium, tag=None):
     assert (len(calcium) == len(resources) == len(weights) == len(delta) ==
-            alpha.size == len(init_weights))
+            alpha.size == len(init_weights) == init_calcium.size)
     N = len(calcium)
 
     for arr in (calcium, resources):  # vectors
         assert (arr.shape1s == 1).all()
-    for arr in (delta, weights,init_weights):  # matrices
+    for arr in (delta, weights, init_weights):  # matrices
         assert (arr.stride1s == 1).all()
 
     #assert (resources.shape0s == weights.shape0s).all()
@@ -290,7 +280,7 @@ def plan_stp(queue, calcium, resources, weights, delta, alpha, init_weights, tag
     assert (weights.shape1s == init_weights.shape1s).all()
 
     assert (calcium.ctype == resources.ctype == weights.ctype == delta.ctype ==
-            alpha.ctype == init_weights.ctype)
+            alpha.ctype == init_weights.ctype==init_calcium.ctype)
 
     text = """
     __kernel void stp(
@@ -311,7 +301,9 @@ def plan_stp(queue, calcium, resources, weights, delta, alpha, init_weights, tag
         __global const ${type} *alphas,
         __global const int *init_weights_stride0s,
         __global const int *init_weights_starts,
-        __global const ${type} *init_weights_data
+        __global const ${type} *init_weights_data,
+        __global const ${type} *init_calciums
+        
         
     )
     {
@@ -328,9 +320,11 @@ def plan_stp(queue, calcium, resources, weights, delta, alpha, init_weights, tag
             weights_starts[k] + i*weights_stride0s[k]+j];
         const ${type} alpha = alphas[k];
         const ${type} init_weights = init_weights_data[init_weights_starts[k] + i*init_weights_stride0s[k]+j];
+        const ${type} init_calcium = init_calciums[k];
+    
         if (i < shape0) {
             delta[i*delta_stride0s[k] + j] =
-               ((calcium*resources/0.2)*init_weights)-weight;
+               ((calcium*resources/init_calcium)*init_weights)-weight;
         }
     }
     """
@@ -344,7 +338,8 @@ def plan_stp(queue, calcium, resources, weights, delta, alpha, init_weights, tag
         resources.cl_stride0s, resources.cl_starts, resources.cl_buf,
         weights.cl_stride0s, weights.cl_starts, weights.cl_buf,
         delta.cl_stride0s, delta.cl_starts, delta.cl_buf,
-        alpha, init_weights.cl_stride0s, init_weights.cl_starts, init_weights.cl_buf,
+        alpha, init_weights.cl_stride0s, init_weights.cl_starts, init_weights.cl_buf, 
+        init_calcium,
     )
     _fn = cl.Program(queue.context, text).build().stp
     _fn.set_args(*[arr.data for arr in full_args])
@@ -355,19 +350,19 @@ def plan_stp(queue, calcium, resources, weights, delta, alpha, init_weights, tag
     plan.full_args = full_args     # prevent garbage-collection
     plan.flops_per_call = 6 * delta.sizes.sum()
     plan.bw_per_call = (calcium.nbytes + resources.nbytes + weights.nbytes +
-                        delta.nbytes + alpha.nbytes + init_weights.nbytes)
+                        delta.nbytes + alpha.nbytes + init_weights.nbytes + init_calcium.nbytes)
     return plan
 
 
 
-def plan_stplif(queue, dt, J, V, W, outS, ref, tau, amp, U, X, tau_u, tau_x, upsample=1, **kwargs):
+def plan_stplif(queue, dt, J, V, W, outS, ref, tau, amp, u, x, tau_u, tau_x, U, upsample=1, **kwargs):
     assert J.ctype == 'float'
-    for x in [V, W, outS, U, X]:
+    for x in [V, W, outS, u, x]:
         assert x.ctype == J.ctype
 
-    inputs = dict(J=J, V=V, W=W, X=X, U=U)
-    outputs = dict(outV=V, outW=W, outS=outS, outX=X, outU=U)
-    parameters = dict(tau=tau, ref=ref, amp=amp,tau_x=tau_x, tau_u=tau_u)
+    inputs = dict(J=J, V=V, W=W, x=x, u=u)
+    outputs = dict(outV=V, outW=W, outS=outS, outx=x, outu=u )
+    parameters = dict(tau=tau, ref=ref, amp=amp,tau_x=tau_x, tau_u=tau_u, U=U)
 
     dt = float(dt)
     textconf = dict(
@@ -398,13 +393,12 @@ def plan_stplif(queue, dt, J, V, W, outS, ref, tau, amp, U, X, tau_u, tau_x, ups
         }else if (V < 0) {
             V = 0;
         }        
-
 % endfor
         outV = V;
         outW = W;
         outS = (spiked) ? amp*dt_inv : 0;
-        outX = X+ dt* ((1-X)/tau_x - U*X*outS);
-        outU = U+ dt* ((0.2-U)/tau_u + 0.2*(1-U)*outS) ;
+        outx = x+ dt* ((1-x)/tau_x - u*x*outS);
+        outu = u+ dt* ((U-u)/tau_u + U*(1-u)*outS) ;
         """
     decs = as_ascii(Template(decs, output_encoding='ascii').render(**textconf))
     text = as_ascii(Template(text, output_encoding='ascii').render(**textconf))
@@ -423,8 +417,8 @@ class StpOCLsimulator(Simulator):
         J = self.all_data[[self.sidx[op.J] for op in ops]]
         V = self.all_data[[self.sidx[op.states[0]] for op in ops]]
         W = self.all_data[[self.sidx[op.states[1]] for op in ops]]
-        X = self.all_data[[self.sidx[op.states[2]] for op in ops]]
-        U = self.all_data[[self.sidx[op.states[3]] for op in ops]]
+        x = self.all_data[[self.sidx[op.states[2]] for op in ops]]
+        u = self.all_data[[self.sidx[op.states[3]] for op in ops]]
         S = self.all_data[[self.sidx[op.output] for op in ops]]
         ref = self.RaggedArray([op.neurons.tau_ref * np.ones(op.J.size)
                                 for op in ops], dtype=J.dtype)
@@ -434,10 +428,12 @@ class StpOCLsimulator(Simulator):
                                   for op in ops], dtype=J.dtype)
         tau_u = self.RaggedArray([op.neurons.tau_u * np.ones(op.J.size)
                                   for op in ops], dtype=J.dtype)
+        U = self.RaggedArray([op.neurons.U * np.ones(op.J.size)
+                                  for op in ops], dtype=J.dtype)
         amp = self.RaggedArray([op.neurons.amplitude * np.ones(op.J.size)
                                 for op in ops], dtype=J.dtype)
         
-        return [plan_stplif(self.queue, dt, J, V, W, S, ref, tau, amp, U, X, tau_u, tau_x)]
+        return [plan_stplif(self.queue, dt, J, V, W, S, ref, tau, amp, u, x, tau_u, tau_x, U)]
     
 
     def plan_SimSTP(self, ops):
@@ -449,6 +445,7 @@ class StpOCLsimulator(Simulator):
         alpha = self.Array([op.learning_rate * self.model.dt for op in ops])
         test= self.all_data[[self.sidx[op.weights] for op in ops]]
         init_weights = self.RaggedArray([op.weights.initial_value for op in ops], dtype=calcium.dtype)
+        init_calcium = self.Array([op.calcium.initial_value[0] for op in ops])
         
-        return [plan_stp(self.queue, calcium, resources, weights, delta, alpha, init_weights)]
-
+        
+        return [plan_stp(self.queue, calcium, resources, weights, delta, alpha, init_weights, init_calcium)]
